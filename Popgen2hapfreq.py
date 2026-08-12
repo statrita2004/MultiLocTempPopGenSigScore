@@ -35,7 +35,7 @@ xx = MH(lpost, x0 = x0,
                                      [0, 0, 1, 0, 0, 0],
                                     [0, 0, 0, 1, 0, 0],
         [0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1]], dtype=torch.float64), nmoves=100, return_entire_chain=True, adapt=False, adapt_no=5000)
+        [0, 0, 0, 0, 0, 1]], dtype=torch.float64), nmoves=100000, return_entire_chain=True, adapt=False, adapt_no=5000)
 xxa = []
 for ind in range(xx.shape[0]):
     xxa.append(WFUD.invtransformationfromR(xx[ind]).detach().numpy())

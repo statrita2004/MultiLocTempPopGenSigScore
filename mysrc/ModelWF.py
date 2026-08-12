@@ -158,7 +158,6 @@ class ModelWrightFisher():
 
         if self.epistasis:
             W = W * Epis_X
-
         return W
 
 
@@ -622,8 +621,8 @@ class WFUniform():
         self.n_sample = n_sample
         self.n_param = n_param
         self.n_ensemble = n_ensemble
-        self.a = -.1
-        self.b = .1
+        self.a = -.2
+        self.b = .2
         ### Generate initail particles
         self.initial_params_original = torch.tensor(scp.stats.uniform(loc=self.a, scale=self.b-self.a).rvs(size=(self.n_sample,self.n_param)))
         self.initial_params = self.transformationtoR(self.initial_params_original)
@@ -723,6 +722,7 @@ class ModelWrightFisherHapFreq():
         # r_all = parameters_numpy[2*self.L+pow(2, self.L):]
         # for every wf sim with fixed L I have the same fitness matrix W(Hij) and
         # same possible recombination events I, summarised into the list of P_partitions
+
         W_ij = self.compute_fitness_matrix_L_loci(s=selection_coeff, h=self.dominance_param, alpha=self.epistasis_alpha)
         self.W_ij = W_ij
         # however rho_ij(t) has to be updated within the simulator
@@ -740,16 +740,6 @@ class ModelWrightFisherHapFreq():
                                           timestep_generation=timestep_generation,
                                           num_forward_simulations=n_data, rng=np.random.RandomState(19))
 
-        # # Do the actual forward simulation
-        # vector_of_k_samples = self.wf_sim(fitness_matrix=W_ij,
-        #                                   # P_partitions = P_partitions,
-        #                                   population_size=self.population_size,
-        #                                   initial_hapl_freq=hapl_freq,
-        #                                   initial_gen=0,
-        #                                   last_gen=self.generation,
-        #                                   generation_interval=self.generation_interval,
-        #                                   num_forward_simulations=n_data, rng=np.random.RandomState(self.seed))
-        # Format the output to obey API
         return torch.stack(vector_of_k_samples, dim=1)
 
     # There are a series of functions that can be done once and used as defaults for
@@ -766,14 +756,14 @@ class ModelWrightFisherHapFreq():
             numpy.ndarray: A (2^L, 2^L) array containing the fitness values for pair of haplotypes.
         """
         if self.L == 1:
-            W = np.array([[1, 1 + s[0] * h[0]],
-                          [1 + s[0] * h[0], 1 + s[0]]])
+            W = np.array([[1, 1 - s[0] * h[0]],
+                          [1 - s[0] * h[0], 1 - s[0]]])
         else:
             w_l_tensor = []
             for l in range(self.L):
                 # create single (2x2) w_l matrices
-                w_l_array = np.array([[1, 1 + s[l] * h[l]],
-                                      [1 + s[l] * h[l], 1 + s[l]]])
+                w_l_array = np.array([[1, 1 - s[l] * h[l]],
+                                      [1 - s[l] * h[l], 1 - s[l]]])
 
                 # Create a tuple containing the reshaping for matrix multiplication
                 L_ones_l_list = [1] * self.L
@@ -1282,160 +1272,7 @@ class WFUniformDirichlet():
         ### The following self.n_param is the dimension of real valued space on which SMC happens
         self.n_param = n_param + pow(2, n_param) - 1
         ### Bounds for Uniform prior
-        self.a, self.b = -1.0, 1.0
-        ### Generate initail particles
-        self.initial_params_original_selcof = torch.tensor(scp.stats.uniform(loc=self.a, scale=(self.b-self.a)).rvs(size=(self.n_sample,self.core.L)))
-        self.dirich = Dirichlet((1/pow(2, self.core.L)) * torch.ones(pow(2, self.core.L)))
-        self.initial_params_original_hapfre = self.dirich.sample((self.n_sample,1)).squeeze()
-        self.initial_params_original = torch.cat((self.initial_params_original_selcof, self.initial_params_original_hapfre),dim=1)
-        self.initial_params = torch.zeros(size=(self.initial_params_original.shape[0], self.initial_params_original.shape[1]-1))
-        for iter in range(self.initial_params_original.shape[0]):
-            self.initial_params[iter,:] = self.transformationtoR(self.initial_params_original[iter,:])
-        self.initial_weight = np.ones(self.n_sample) / self.n_sample
-
-    def logprior_grad(self, thetaR, want_grad=False):
-        ## Input thetaR lies in Real line, so transformation used to get to the correct parameter space ##
-        funkeeprior = lambda x: self.logprior_local(x)
-        if want_grad:
-            #raise RuntimeError("Logprior pdf is not differentiable.")
-            return funkeeprior(thetaR), self.zeroth_order_grad(func=funkeeprior, x=thetaR)
-        else:
-            return funkeeprior(thetaR)
-
-    def logprior_local(self, thetaR, want_grad = False):
-        theta, logJacobian = self.invtransformationfromR(thetaR, jacneeded = True)
-        llhd = sum(scp.stats.uniform(loc=self.a, scale=(self.b-self.a)).logpdf(theta[:self.core.L]))\
-               + self.dirich.log_prob(theta[self.core.L:]).item() + logJacobian
-        return llhd
-
-    def llhd_grad(self, thetaR, want_grad=False):
-        ## Input thetaR lies in Real line, so transformation used to get to the correct parameter space ##
-        #theta = self.invtransformationfromR(thetaR)
-        funkee = lambda x: self.llhd_local(x)
-        if want_grad:
-            #raise RuntimeError("approx LogLHD of WF model is not differentiable.")
-            # We compute using zeroth order gradient
-            return funkee(thetaR), self.zeroth_order_grad(func=funkee, x=thetaR)
-        else:
-            return funkee(thetaR)
-
-    def llhd_local(self, thetaR, want_grad = False):
-        theta = self.invtransformationfromR(thetaR)
-        llhd = self.core.approx_llhd(theta, self.data_obs, if_grad=want_grad)
-        return llhd
-
-    def zeroth_order_grad(self, func, x, mu=0.01, b=30):
-        '''
-        Here mu is a smoothing parameter and b is the number of random directions to sample
-        Try with small values of mu like 0.5, 0.1, 0.01 etc.
-        You can take b = 10/ 20/ 30 etc. Bigger value of b will give better approximation of the gradient but will be slower.
-        '''
-
-        n_param_zero = x.shape[0]
-        f_x = func(x)
-        grad = np.zeros_like(x)
-        for i in range(b):
-            random_u = multivariate_normal.rvs(mean=np.zeros(n_param_zero), cov=np.eye(n_param_zero), size=1)
-            new_x = x + random_u * mu
-            f_xplusu = func(new_x)
-            new_grad = ((f_xplusu - f_x) * random_u)
-            #print(grad, new_grad)
-            grad = grad + new_grad / (mu * b)
-        return torch.tensor(grad)
-
-    def invtransformationfromR(self, sampleR, jacneeded = False):
-        # first_part
-        logit_inv = (1/(1+torch.exp(-sampleR[:self.core.L])))
-        first_part_transformed = (self.b-self.a) * logit_inv + self.a
-        first_part_logJacobian = np.log(self.b - self.a) + torch.log(logit_inv) + torch.log(1 - logit_inv)
-        # second_part
-        transformed, second_part_logJacobian = self.transform_Rd_to_Simplex_Jacobian(sampleR[self.core.L:].detach().numpy())
-        second_part_transformed = torch.tensor(transformed)
-        # final Jacobian
-        Jacobian = sum(first_part_logJacobian) + second_part_logJacobian
-        if jacneeded:
-            return torch.cat((first_part_transformed, second_part_transformed)), Jacobian.detach().numpy()
-        else:
-            return torch.cat((first_part_transformed, second_part_transformed))
-
-    def transformationtoR(self, sample):
-        first_part = torch.special.logit((1/(self.b-self.a)) * (sample[:self.core.L] - self.a))
-        second_part = torch.tensor(self.transform_Simplex_to_Rd(sample[self.core.L:].detach().numpy()))
-        return torch.cat((first_part,second_part))
-
-    # Transformations for Dirichlet priors and the Real line
-    def transform_Simplex_to_Rd(self, w):
-        """
-        This function applies a transformation to the realisation of a Dirichlet sample into Rd.
-
-        Transform dirichlet realizations (x_0 in the 2^{L} simplex) into a R 2^{L}-1 dimensional random
-        vector in the real starting from a 2^L -1 dimensional random variable in Rd,
-        denoted as -We- \in R 2^{L}-1
-            Args:
-                x_haplo:     Realisation from a dirichlet in the 2^{L} simplex
-            Returns:
-                w_Rd:       The output vector of initial haplotype frequencies in the R^ 2^{L}-1, (-inf, +inf)
-        """
-
-        if isinstance(w, list):
-            w = np.array(w)
-
-        W = np.zeros(len(w)-1)
-        for iter in range(len(w)-1):
-            W[iter] = scp.special.logit(w[iter] / sum(w[iter:])) - scp.special.logit(1/(len(w)-(iter+1)+1))
-        return W
-
-    def transform_Rd_to_Simplex_Jacobian(self, W):
-        """
-        This function applies a reverse transformation to the realisation of a Dirichlet sample in Rd
-        back to the original sample space.
-
-        In our context:
-        Computes the initial haplotype frequencies (x_0 in the 2^L simplex)
-        using 2^L -1 dimensional random variable in Rd, denoted as -We- \in R 2^{L}-1
-            Args:
-                We:         2^{L}-1 realisations from Dir random variables in real line (-inf, +inf)
-            Returns:
-                x_cand_0:   The candidate vector of initial haplotype frequencies x_0 in R 2^{L}
-        """
-
-        W = np.array(W)
-
-        z, w, JacTerm = np.zeros(len(W)), np.zeros(len(W)+1), np.zeros(len(W))
-
-        for iter in range(len(z)):
-            z[iter] = scp.special.expit(W[iter] + scp.special.logit(1/(len(w)-(iter+1)+1)))
-
-        w[0] = z[0]
-        for iter in range(1, len(z)):
-            w[iter] = z[iter] * (1 - sum(w[:iter]))
-
-        w[-1] = 1 - sum(w)
-
-        ## Calculation of Jacobian
-        logJacobian = 0
-        for iter in range(1, len(z)):
-            logJacobian = np.log(z[iter]) + np.log(1 - z[iter]) + np.log((1 - np.sum(w[:iter-1])))
-
-        return w, logJacobian
-
-class WFUniformDirichlet2():
-    def __init__(self, neg_approx_llhd, population_size, generation, generation_interval,
-                 recomb_param, data_obs, n_sample, n_param, dominance_param = None):
-        ## neg_approx_llhd: the approximation of neglikelihood
-        ## data_obs: observed data
-        ## n_sample: number of particles in SMC would be used
-        ## n_param = dimension of the parameter space
-        if dominance_param is None:
-            dominance_param = [.5 for ind in range(n_param)]
-        self.core = ModelWrightFisherHapFreq(neg_approx_llhd, n_param, population_size, generation, generation_interval,
-                 recomb_param, dominance_param=dominance_param)
-        self.data_obs = data_obs
-        self.n_sample = n_sample
-        ### The following self.n_param is the dimension of real valued space on which SMC happens
-        self.n_param = n_param + pow(2, n_param) - 1
-        ### Bounds for Uniform prior
-        self.a, self.b = -0.1, 0.1
+        self.a, self.b = -0.2, 0.2
         ## Simplex R transformer
         self.STFR = SimplexToFromRd()
         ### Generate initail particles

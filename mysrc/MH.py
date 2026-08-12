@@ -10,7 +10,7 @@ from scipy.stats import multivariate_normal
 def MH(logdensityfunc, x0, sigma, nmoves=5, return_entire_chain=False, adapt=True, adapt_no = 100):
     acceptance = 0
     d = x0.shape[0]
-    print(sigma.dim())
+    #print(sigma.dim())
 
     x0chainnumpy = [x0.detach().numpy()]
     if return_entire_chain:
@@ -20,9 +20,9 @@ def MH(logdensityfunc, x0, sigma, nmoves=5, return_entire_chain=False, adapt=Tru
         print('Fraction of steps:',iter/nmoves,'(Total:',nmoves,')')
         if np.remainder(iter, adapt_no)==0 and iter>0 and sigma.dim()>0 and adapt:
             sigma = torch.tensor((5.66/d)*(np.cov(np.array(x0chainnumpy)[-100:,:].T)+1e-10*np.eye(d)))
-            print('Time to update to sigma:', sigma)
+            #print('Time to update to sigma:', sigma)
 
-        ### Log-Exp transformation used to perturn on real line as the parameter is positive valued ###
+        ### Log-Exp transformation used to return on real line as the parameter is positive valued ###
         if sigma.dim() == 0:
             x_new = x0 + normal.Normal(torch.tensor([0.0]), sigma * torch.tensor([1.0])).sample(sample_shape=torch.Size([1]))[0].to(dtype=torch.float32)
         else:
@@ -31,7 +31,7 @@ def MH(logdensityfunc, x0, sigma, nmoves=5, return_entire_chain=False, adapt=Tru
         if alpha < min(logdensityfunc(x_new)-logdensityfunc(x0),0):
             xt = x_new
             #print('Accepted')
-            print(min(np.exp(logdensityfunc(x_new)-logdensityfunc(x0)),1), 'Accepted')
+            #print(min(np.exp(logdensityfunc(x_new)-logdensityfunc(x0)),1), 'Accepted')
             acceptance = acceptance + 1
         else:
             xt = x0

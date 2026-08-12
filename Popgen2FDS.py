@@ -30,8 +30,8 @@ lpost = lambda x: FDSU.llhd_grad(x) + FDSU.logprior_grad(x)
 # x0 = FDSU.transformationtoR(torch.tensor([0,0]))
 # from mysrc.MH import MH
 # xx = MH(lpost, x0 = x0,
-#         sigma = 1e-4 * torch.tensor([[1, 0],
-#         [0,  1]], dtype=torch.float64), nmoves=1000, return_entire_chain=True, adapt=False)
+#         sigma = 1e-2 * torch.tensor([[1, 0],
+#         [0,  1]], dtype=torch.float64), nmoves=5000, return_entire_chain=True, adapt=False)
 #
 # for ind in range(xx.shape[0]):
 #     xx[ind] = FDSU.invtransformationfromR(xx[ind])
@@ -39,8 +39,7 @@ lpost = lambda x: FDSU.llhd_grad(x) + FDSU.logprior_grad(x)
 # np.savez('Results/FDS/MH_FDS_2', samples=xx)
 
 xx = np.load('Results/FDS/MH_FDS_2.npz')['samples']
-print(xx.shape)
-burnin = 500
+burnin = 1000
 xx = xx[burnin:,:]
 postmean = np.average(xx, axis=0)
 print(postmean)

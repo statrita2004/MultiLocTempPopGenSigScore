@@ -1,6 +1,10 @@
 import torch
 import numpy as np
 import time
+from backends import BackendMPI, BackendDummy
+backend = BackendMPI()
+#backend = BackendDummy()
+
 from mysrc.scoring_rules import SignatureKernel
 neg_approx_llhd = SignatureKernel(rbf_sigma=.1, dyadic_order = 1, keep_time = True, cumsum=False, static_kernel_name='RBF').estimate_score_batch
 
@@ -12,17 +16,18 @@ epistasis_alpha = [[8]]
 r = [[0,0.00001],[0.0001,0.001],[0.001,0.01],[0.01, 0.1],[0.1,0.5]]
 
 n_param = 3
-n_rep = 10
-burnin = 200
+n_rep = 100
+burnin = 1000
 
 estimate_mcmc = np.zeros(shape=(len(s), len(r), n_rep, n_param))
-MSE_mean = np.zeros(shape=(len(s), len(r)))
-MSE_std = np.zeros(shape=(len(s), len(r)))
-runtime = np.zeros(shape=(len(s), len(r), n_rep))
+MSE_mean_mcmc = np.zeros(shape=(len(s), len(r)))
+MSE_std_mcmc = np.zeros(shape=(len(s), len(r)))
+runtime_mcmc = np.zeros(shape=(len(s), len(r), n_rep))
 
 estimate_lls = np.zeros(shape=(len(s), len(r), n_rep, n_param))
 MSE_mean_lls = np.zeros(shape=(len(s), len(r)))
 MSE_std_lls = np.zeros(shape=(len(s), len(r)))
+runtime_lls = np.zeros(shape=(len(s), len(r), n_rep))
 
 for ind_s in range(len(s)):
         for ind_r in range(len(r)):
@@ -33,30 +38,38 @@ for ind_s in range(len(s)):
                         generation=100,generation_interval=[10], recomb_param = r[ind_r],
                         haplotype_freq = [0.2, 0.2, 0.05, 0.15, 0.05, 0.05, 0.2, 0.1], dominance_param = None)
 
-                # Simule n_data=10 datasets for fixed selection coefficient s[ind_s]
+                # Simulate n_data=n_rep datasets for fixed selection coefficient s[ind_s], r[ind_r]
                 data_obs = WF.forward_simulation(torch.tensor(s[ind_s]), n_data=n_rep)
 
                 for ind_rep in range(n_rep):
+                        start_t = time.time()
                         data_obs_tmp_numpy = data_obs[:,ind_rep:ind_rep+1,:].detach().numpy().squeeze()
                         for ind_dim in range(data_obs_tmp_numpy.shape[1]-1):
                                 nonzero_index = np.argwhere(data_obs_tmp_numpy[:,ind_dim+1]>0).max()
-                                p_t, p_0 = 1-data_obs_tmp_numpy[nonzero_index,ind_dim+1],1-data_obs_tmp_numpy[0,ind_dim+1]
-                                estimate_lls[ind_s, ind_r, ind_rep,ind_dim] = (np.log((p_t * (1-p_0))/(p_0*(1-p_t))))*(2/(50*nonzero_index))
-                        #print(estimate_lls)
-                        #print('estimate_lls', estimate_lls[ind_s, ind_r,:,:])
+                                p_t, p_0 = data_obs_tmp_numpy[nonzero_index,ind_dim+1],data_obs_tmp_numpy[0,ind_dim+1]
+                                if p_t == 0:
+                                        p_t=1e-10
+                                if p_t == 1:
+                                        p_t=1 - 1e-10
+                                if p_t == p_0:
+                                        estimate_lls[ind_s, ind_r, ind_rep,ind_dim] = 0
+                                else:
+                                        estimate_lls[ind_s, ind_r, ind_rep,ind_dim] = (np.log((p_t * (1-p_0))/(p_0*(1-p_t))))*(2/(10*nonzero_index))
+                        end_t = time.time()
+                        runtime_lls[ind_s, ind_r, ind_rep] = end_t - start_t
                 SE_lls = np.sqrt((1/WF.L) * np.sum(np.square(estimate_lls[ind_s, ind_r,:,:] - s[ind_s]), axis=1))
                 MSE_mean_lls[ind_s, ind_r], MSE_std_lls[ind_s, ind_r] = np.mean(SE_lls), np.std(SE_lls)
                 print(MSE_mean_lls, MSE_std_lls)
-                np.savez('Results/WF/selcof_3_lls', estimate_lls=estimate_lls, MSE_mean_lls=MSE_mean_lls, MSE_std_lls=MSE_std_lls)
+                np.savez('Results/WF/selcof_3_lls', estimate_lls=estimate_lls, MSE_mean_lls=MSE_mean_lls, MSE_std_lls=MSE_std_lls, runtime_lls=runtime_lls, data=data_obs)
 
-                for ind_rep in range(n_rep):
+                def MCMC_temp_function(ind_rep):
                         data_obs_tmp = data_obs[:,ind_rep:ind_rep+1,:]
 
                         from mysrc.ModelWF import WFUniform as WFU
 
                         WFU = WFU(neg_approx_llhd, population_size=5000, generation=100, generation_interval=[10],
                                   recomb_param=r[ind_r], haplotype_freq=[0.2, 0.2, 0.05, 0.15, 0.05, 0.05, 0.2, 0.1],
-                                  data_obs=data_obs, n_sample=100, n_param=3)
+                                  data_obs=data_obs_tmp, n_sample=100, n_param=3)
                         lpost = lambda x: WFU.llhd_grad(x) + WFU.logprior_grad(x)
 
                         x0 = WFU.transformationtoR(torch.tensor([0.0, 0.0, 0.0]))
@@ -64,18 +77,26 @@ for ind_s in range(len(s)):
                         start_t = time.time()
                         xx = MH(lpost, x0 = x0,
                                 sigma = 1e-5 * torch.tensor([[1, 0, 0], [0, 1, 0],
-                                [0, 0, 1]], dtype=torch.float64), nmoves=1000, return_entire_chain=True, adapt=True)
+                                [0, 0, 1]], dtype=torch.float64), nmoves=2000, return_entire_chain=True, adapt=True)
                         for ind in range(xx.shape[0]):
                             xx[ind] = WFU.invtransformationfromR(xx[ind])
                         xx = xx[burnin:, :]
                         postmean = np.average(xx, axis=0)
                         end_t = time.time()
-                        estimate_mcmc[ind_s, ind_r, ind_rep, :] = postmean
-                        runtime[ind_s, ind_r, ind_rep] = end_t - start_t
-                        print(postmean, end_t-start_t)
+                        return postmean, end_t-start_t
+
+                rep_array = [ind_rep for ind_rep in range(n_rep)]
+                rep_array_pds = backend.parallelize(rep_array)
+                MCMC_temp_pds = backend.map(MCMC_temp_function, rep_array_pds)
+                postmean_rtime_tuple = backend.collect(MCMC_temp_pds)
+                postmean, r_time = zip(*postmean_rtime_tuple)
+
+                estimate_mcmc[ind_s, ind_r, :, :] = np.array(postmean)
+                runtime_mcmc[ind_s, ind_r, :] = np.array(r_time)
+
                 print('estimate_mcmc', estimate_mcmc[ind_s, ind_r,:,:])
                 SE_mcmc = np.sqrt((1/WF.L) * np.sum(np.square(estimate_mcmc[ind_s, ind_r,:,:] - s[ind_s]), axis=1))
                 print('SE', SE_mcmc)
-                MSE_mean[ind_s, ind_r], MSE_std[ind_s, ind_r] = np.mean(SE_mcmc), np.std(SE_mcmc)
-                print(MSE_mean, MSE_std)
-                np.savez('Results/WF/selcof_3_mcmc', estimate_da=estimate_mcmc, MSE_mean=MSE_mean, MSE_std=MSE_std, runtime=runtime)
+                MSE_mean_mcmc[ind_s, ind_r], MSE_std_mcmc[ind_s, ind_r] = np.mean(SE_mcmc), np.std(SE_mcmc)
+                print(MSE_mean_mcmc, MSE_std_mcmc)
+                np.savez('Results/WF/selcof_3_mcmc', estimate_da=estimate_mcmc, MSE_mean=MSE_mean_mcmc, MSE_std=MSE_std_mcmc, runtime=runtime_mcmc, data=data_obs)

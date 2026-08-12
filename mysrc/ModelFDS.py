@@ -54,6 +54,7 @@ class ModelWrightFisherFDS():
 
         simulations = self.forward_simulation(parameters, n_data=n_ensemble)
         loss = -1 * self.loss_fn(simulations, data)
+        print(loss)
         if if_grad:
             raise RuntimeError("Loss is not differentiable for this model.")
         else:

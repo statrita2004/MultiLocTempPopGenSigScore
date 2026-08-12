@@ -28,6 +28,7 @@ WFU= WFU(neg_approx_llhd, population_size=5000, generation=100, generation_inter
          data_obs=data_obs, n_sample=100, n_param=3)
 lpost = lambda x: WFU.llhd_grad(x) + WFU.logprior_grad(x)
 
+
 ## Posterior Sampling from Scoring Rule Posterior using MH###
 #####################################################
 x0 = WFU.transformationtoR(torch.tensor([0.0, 0.0, 0.0]))
