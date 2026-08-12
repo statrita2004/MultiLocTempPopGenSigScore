@@ -1,6 +1,7 @@
 This is the repository for the article :
 [Signature-Informed Selection Detection: A Novel Method for Multi-Locus Temporal Population Genetic Model with Recombination](https://doi.org/10.48550/arXiv.2512.14353)
 
+- Codes were run and tested using Python 3.9.6
 - **requirements.txt**: All the Python packages needed to run codes of this repository and can be installed using 'pip'
 - **[sigkernel](https://github.com/crispitagorico/sigkernel)** repository is needed in addition and can be installed using 'pip install git+https://github.com/crispitagorico/sigkernel.git'
 
