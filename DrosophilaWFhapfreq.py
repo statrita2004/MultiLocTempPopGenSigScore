@@ -73,7 +73,7 @@ print('LLS estimate:', estimate_lls[rep_ind,:])
 #                              [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
 #                              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]], dtype=torch.float64)
 # from mysrc.MH import MH
-# xx = MH(lpost, x0 = x0,sigma =  sigma_0, nmoves=100000, return_entire_chain=True)
+# xx = MH(lpost, x0 = x0,sigma =  sigma_0, nmoves=100000, return_entire_chain=True, adapt=False, adapt_no=1000)
 # xxa = []
 # for ind in range(xx.shape[0]):
 #     xxa.append(WFUD.invtransformationfromR(xx[ind]).detach().numpy())
