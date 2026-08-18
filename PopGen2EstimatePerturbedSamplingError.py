@@ -19,7 +19,7 @@ lamb = [10000]#, 100, 200, 300, 400]
 
 n_param = 2
 n_rep = 1
-burnin = 2
+burnin = 1000
 n_gen_int = 10
 n_gen = 100
 n_pop_size = 5000
@@ -96,7 +96,7 @@ for ind_lamb in range(len(lamb)):
                                 from mysrc.MH import MH
                                 start_t = time.time()
                                 xx = MH(lpost, x0=x0,
-                                        sigma=1e-4 * torch.tensor([[1, 0], [0, 1]], dtype=torch.float64), nmoves=10,
+                                        sigma=1e-4 * torch.tensor([[1, 0], [0, 1]], dtype=torch.float64), nmoves=2000,
                                         return_entire_chain=True, adapt=True)
                                 for ind in range(xx.shape[0]):
                                         xx[ind] = WFU.invtransformationfromR(xx[ind])
